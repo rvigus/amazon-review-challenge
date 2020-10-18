@@ -1,0 +1,6 @@
+*.csv
+*.ipynb
+*.ipynb_checkpoints
+mnt/postgres/*
+*.gz
+
