@@ -172,10 +172,10 @@ with DAG(
         dag=dag
     )
 
-    # download_data_sets = BashOperator(
-    #     task_id='download_data_sets',
-    #     bash_command='/bash/download.sh'
-    # )
+    download_data_sets = BashOperator(
+        task_id='download_data_sets',
+        bash_command='/bash/download.sh'
+    )
 
     extract_sku_data_to_csv = PythonOperator(
         task_id='extract_sku_data_to_csv',
@@ -258,7 +258,7 @@ with DAG(
     )
 
 
-    start_pipeline >> extract_sku_data_to_csv \
+    start_pipeline >> download_data_sets >> extract_sku_data_to_csv \
     >> extract_fact_data_to_csv >> create_staging_sku_table >> create_staging_fact_table \
     >> insert_to_staging_sku_table >> insert_to_staging_fact_table >> create_and_load_sku_table >> create_and_load_fact_table \
     >> clean_up_files
