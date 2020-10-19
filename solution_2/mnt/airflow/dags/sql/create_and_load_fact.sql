@@ -5,11 +5,13 @@ create table if not exists fact_reviews (
 	asin VARCHAR(256),
 	reviewername VARCHAR(256),
 	helpful VARCHAR(256),
-	reviewtext VARCHAR(100000),
+	reviewtext VARCHAR(65335),
 	overall INT,
 	summary VARCHAR(10000),
-	reviewtime timestamp
+	reviewtime timestamp,
+	link_category VARCHAR(256)
 );
+
 
 insert into fact_reviews (
 	select
@@ -20,7 +22,9 @@ insert into fact_reviews (
 	reviewtext as reviewtext,
 	cast(overall as int) as overall,
 	summary as summary,
-	to_timestamp(unixreviewtime) as reviewtime
+	to_timestamp(unixreviewtime) as reviewtime,
+	link_category as link_category
 	from staging_review sr
-	order by reviewtime asc
 );
+
+ALTER TABLE fact_reviews ADD COLUMN id SERIAL PRIMARY KEY;
