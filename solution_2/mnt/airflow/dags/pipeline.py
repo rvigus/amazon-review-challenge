@@ -44,7 +44,7 @@ def extract_keys(input_dict):
 
 def unzip_to_csv_sku(input_path, output_path, name):
     """
-    Open .gzip -> extract keys -> store csv
+    Parse "meta" gzip files, extract relevant json and then store to CSV.
 
     """
 
@@ -79,7 +79,10 @@ def iterate_over_sku_files(folder_path):
 
 def unzip_to_csv_fact(input_path, output_path, name):
     """
-    Open .gzip -> store csv
+    Parse "review" gzip files, extract relevant json and then store to CSV.
+
+    NOTE: I chose to limit the files to 500k rows each, as my laptop can't really handle anything higher
+    without significant run times and I don't have access to cloud resources.
 
     """
 
@@ -92,7 +95,7 @@ def unzip_to_csv_fact(input_path, output_path, name):
 
     logging.info("Unzip complete: Saving to CSV")
     df = pd.DataFrame.from_dict(records, orient='index')
-    df['link_category'] = name.split('_', 1)[1]
+    df['link_category'] = name.split('_', 1)[1] # example Patio_Lawn_and_Garden
     df = df.drop_duplicates(subset=['reviewerID', 'asin', 'unixReviewTime'])
     df.iloc[:500000, :].to_csv(output_path, sep='|', index=False)
 
@@ -107,7 +110,7 @@ def iterate_over_fact_files(folder_path):
 
     for g in gzips:
         input_path = os.path.join(folder_path, g)
-        name = g.split('.json')[0]
+        name = g.split('.json')[0] # gets the link_category name
         output_path = os.path.join(folder_path, f"{name}.csv")
 
         logging.info(f"Extracting from: {input_path} to {output_path}")
@@ -115,12 +118,13 @@ def iterate_over_fact_files(folder_path):
 
 def load_csv_to_table(file_path, table_name, iter):
     """
-    Loads a CSV using COPY command from SDTIN
+    Loads a CSV to postgresdb using COPY command from SDTIN
 
     """
 
     try:
         logging.info("Connecting to the Database")
+        # In a real project we would read credentials from a secrets file, or environment variables.
         conn = psycopg2.connect(dbname='airflow_db', host='postgres', port=5432, user='airflow', password='airflow')
         cursor = conn.cursor()
         logging.info("Success")
@@ -147,7 +151,7 @@ def load_csv_to_table(file_path, table_name, iter):
 
 def iterate_csv_load(folder_path, type, table_name):
     """
-    Load all csv's to postgres staging
+    Load all csv's to postgres staging tables.
 
     """
 
@@ -172,11 +176,19 @@ with DAG(
         dag=dag
     )
 
+    # Step 1: Call bash script to download all data.
+    # To improve this, I would have preferred to iterate through URL's using the same task but with a URL parameter.
+    # This way it would be easier to handle download failures for specific categories, and the pipeline could still run for successfully downloads.
     download_data_sets = BashOperator(
         task_id='download_data_sets',
         bash_command='/bash/download.sh'
     )
 
+    # Step 2: Unzip JSON and store as CSV.
+    # Ideally, I wouldn't need to create the CSV, as we already have the JSON.
+    # However I had to process the json in some way as records were not always consistent. I could also handle duplicates easily in python.
+    # I chose to store as CSV format as it was more familiar to me when working with COPY command when uploding to staging tables.
+    # I know this part is quite inefficient, given more time I would have liked to done something different here.
     extract_sku_data_to_csv = PythonOperator(
         task_id='extract_sku_data_to_csv',
         python_callable=iterate_over_sku_files,
@@ -189,6 +201,9 @@ with DAG(
         op_kwargs={'folder_path': '/usr/local/airflow/dags/files'}
     )
 
+    # Step 3: Create staging tables.
+    # Our data model is quite simple, we have review data inside fact_reviews and product data inside dim_sku.
+    # key between tables is "asin".
     create_staging_sku_table = PostgresOperator(
         task_id='create_staging_sku_table',
         postgres_conn_id='postgres_conn',
@@ -223,6 +238,7 @@ with DAG(
         """
     )
 
+    # Step 4: Populate our staging tables
     insert_to_staging_sku_table = PythonOperator(
         task_id='insert_to_staging_sku_table',
         python_callable=iterate_csv_load,
@@ -239,18 +255,23 @@ with DAG(
                    'table_name': 'staging_review'}
     )
 
+    # Step 5: From staging tables, apply any final transformations and insert into dim_sku.
     create_and_load_sku_table = PostgresOperator(
         task_id='create_and_load_sku_table',
         postgres_conn_id='postgres_conn',
         sql='sql/create_and_load_sku.sql'
     )
 
+    # Apply any final transformations and insert into fact_reviews.
     create_and_load_fact_table = PostgresOperator(
         task_id='create_and_load_fact_table',
         postgres_conn_id='postgres_conn',
         sql='sql/create_and_load_fact.sql'
     )
 
+    # Clean up processed csv files -> leaving only json downloads.
+    # I did this because I didn't want to keep downloading files when testing (I turned off the download step).
+    # When scheduled, download.sh will overwrite files if they exist from previous runs.
     clean_up_files = BashOperator(
         task_id='clean_up_files',
         bash_command='bash/cleanup.sh',
