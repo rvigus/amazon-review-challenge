@@ -81,8 +81,8 @@ def unzip_to_csv_fact(input_path, output_path, name):
     """
     Parse "review" gzip files, extract relevant json and then store to CSV.
 
-    NOTE: I chose to limit the files to 500k rows each, as my laptop can't really handle anything higher
-    without significant run times and I don't have access to cloud resources.
+    NOTE: I had to limit the files to 500k each (total 2million rows) as my laptop was unfortunately really struggling to handle
+    anything higher.
 
     """
 
