@@ -178,7 +178,7 @@ with DAG(
 
     # Step 1: Call bash script to download all data.
     # To improve this, I would have preferred to iterate through URL's using the same task but with a URL parameter.
-    # This way it would be easier to handle download failures for specific categories, and the pipeline could still run for successfully downloads.
+    # This way it would be easier to handle download failures for specific categories, and the pipeline could still run for data sucessfully downloaded.
     download_data_sets = BashOperator(
         task_id='download_data_sets',
         bash_command='/bash/download.sh'
@@ -186,8 +186,9 @@ with DAG(
 
     # Step 2: Unzip JSON and store as CSV.
     # Ideally, I wouldn't need to create the CSV, as we already have the JSON.
-    # However I had to process the json in some way as records were not always consistent. I could also handle duplicates easily in python.
+    # However I had to process the json in some way as records were not always consistent. I could also handle duplicates easily once loaded.
     # I chose to store as CSV format as it was more familiar to me when working with COPY command when uploding to staging tables.
+    # An alternate approach for duplicates could have been to process them once inside our database. 
     # I know this part is quite inefficient, given more time I would have liked to done something different here.
     extract_sku_data_to_csv = PythonOperator(
         task_id='extract_sku_data_to_csv',
